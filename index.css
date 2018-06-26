@@ -1,4 +1,5 @@
-h1 { Color: Red }
-p { color: red }
+h1 { Color: Blue}
+p { color: black}
 h1:hover {border: 5px solid black }
 <body bgcolor="#9999FF">
+<p id= 'first'> {color : red}
