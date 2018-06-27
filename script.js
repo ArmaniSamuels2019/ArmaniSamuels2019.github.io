@@ -1,6 +1,6 @@
 $(document).ready(function(){
   $("button").click(function(){
-    alert("Hello from my page");
+    alert("Hello from my page"){
     $("iframe").hide();
     $("iframe").show();
   });
