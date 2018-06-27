@@ -1,5 +1,5 @@
 $(document).ready(function(){
-  $("button1").click(function(){
+  $("button").click(function(){
     alert("Hello from my page");
     $("iframe").hide();
     $("iframe").show();
