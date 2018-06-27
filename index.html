@@ -14,10 +14,12 @@
     $(document).ready(function(){
       $("#button1").click(function(){
         alert("Hello from my webpage");
-        $("iframe").hide();
-      });
-      $("#button2").click(function(){
+        $("#button2").click(function(){
+           $("iframe").hide();
+             });
+      $("#button3").click(function(){
         $("iframe").show();
+        
       });
     });
   </script>
@@ -27,7 +29,7 @@
   <body>
     <div class="header">
     <h1>Armani's Website</h1>
-      <button>Say Hi!</button>
+      <button id="button1">Say Hi!</button>
        <p id='first'>I believe that Love and positivity rules over all.</p>
        <p id='second'>In this blog I will just spread positive energy by posting groovy and chill things.</p>
        <p id='third'> Hope you enjoy!</p>
@@ -41,8 +43,8 @@
       <img src="https://static1.squarespace.com/static/58ecfb696a49630e8a7ee3ca/5955530e59cc683797e3317c/5a6f3ad3419202597c791fc3/1522863094218/Good_Vibes-CDR.jpg?format=500w" width=40%>
       <iframe width="560" height="315" src="https://www.youtube.com/embed/oXggf4yMccM" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
         <p id='fourth'>GOOD VIBES ALL AROUND.</p>
-      <button id="button1">Hide</button>
-      <button id="button2">Show</button>
+      <button id="button2">Hide</button>
+      <button id="button3">Show</button>
         
   </body>
  </html>
