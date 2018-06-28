@@ -4,4 +4,6 @@ body { background-image: url("https://78.media.tumblr.com/95f4e4d20ae672220f2372
 p { font-family: "Times New Roman", Times, serif;}
 .box {
   display: inline-block;
+  height: 150px;
+  border: 1px solid black;
 }
