@@ -1,540 +1,550 @@
-document.addEventListener("DOMContentLoaded", function () {
-  // Wait till the browser is ready to render the game (avoids glitches)
-  window.requestAnimationFrame(function () {
-    var manager = new GameManager(4, KeyboardInputManager, HTMLActuator);
-  });
-});
+(function ($) {
+    /**
+     * User options
+     */
+    var defaults = {
+        delay: 200 //Game speed
+    };
 
+    $.fn.init2048 = function (_options) {
+        var _this = this,
+            options = $.extend(defaults, _options),
 
-function GameManager(size, InputManager, Actuator) {
-  this.size         = size; // Size of the grid
-  this.inputManager = new InputManager;
-  this.actuator     = new Actuator;
+            dir = {
+                up: 'up',
+                right: 'right',
+                down: 'down',
+                left: 'left'
+            },
 
-  this.startTiles   = 2;
+            holder = {}, //Game outer holder
+            content = {}, //Game inner container
 
-  this.inputManager.on("move", this.move.bind(this));
-  this.inputManager.on("restart", this.restart.bind(this));
+            matrix = [], //For the logic behind
+            boxes = [], //Boxes storage
 
-  this.setup();
-}
+            isCheating = 0,
+            isGameOver = false;
 
-// Restart the game
-GameManager.prototype.restart = function () {
-  this.actuator.restart();
-  this.setup();
-};
+        resetGame();
+        bind();
 
-// Set up the game
-GameManager.prototype.setup = function () {
-  this.grid         = new Grid(this.size);
-
-  this.score        = 0;
-  this.over         = false;
-  this.won          = false;
-
-  // Add the initial tiles
-  this.addStartTiles();
-
-  // Update the actuator
-  this.actuate();
-};
-
-// Set up the initial tiles to start the game with
-GameManager.prototype.addStartTiles = function () {
-  for (var i = 0; i < this.startTiles; i++) {
-    this.addRandomTile();
-  }
-};
-
-// Adds a tile in a random position
-GameManager.prototype.addRandomTile = function () {
-  if (this.grid.cellsAvailable()) {
-    var value = Math.random() < 0.9 ? 2 : 4;
-    var tile = new Tile(this.grid.randomAvailableCell(), value);
-
-    this.grid.insertTile(tile);
-  }
-};
-
-// Sends the updated grid to the actuator
-GameManager.prototype.actuate = function () {
-  this.actuator.actuate(this.grid, {
-    score: this.score,
-    over:  this.over,
-    won:   this.won
-  });
-};
-
-// Save all tile positions and remove merger info
-GameManager.prototype.prepareTiles = function () {
-  this.grid.eachCell(function (x, y, tile) {
-    if (tile) {
-      tile.mergedFrom = null;
-      tile.savePosition();
-    }
-  });
-};
-
-// Move a tile and its representation
-GameManager.prototype.moveTile = function (tile, cell) {
-  this.grid.cells[tile.x][tile.y] = null;
-  this.grid.cells[cell.x][cell.y] = tile;
-  tile.updatePosition(cell);
-};
-
-// Move tiles on the grid in the specified direction
-GameManager.prototype.move = function (direction) {
-  // 0: up, 1: right, 2:down, 3: left
-  var self = this;
-
-  if (this.over || this.won) return; // Don't do anything if the game's over
-
-  var cell, tile;
-
-  var vector     = this.getVector(direction);
-  var traversals = this.buildTraversals(vector);
-  var moved      = false;
-
-  // Save the current tile positions and remove merger information
-  this.prepareTiles();
-
-  // Traverse the grid in the right direction and move tiles
-  traversals.x.forEach(function (x) {
-    traversals.y.forEach(function (y) {
-      cell = { x: x, y: y };
-      tile = self.grid.cellContent(cell);
-
-      if (tile) {
-        var positions = self.findFarthestPosition(cell, vector);
-        var next      = self.grid.cellContent(positions.next);
-
-        // Only one merger per row traversal?
-        if (next && next.value === tile.value && !next.mergedFrom) {
-          var merged = new Tile(positions.next, tile.value * 2);
-          merged.mergedFrom = [tile, next];
-
-          self.grid.insertTile(merged);
-          self.grid.removeTile(tile);
-
-          // Converge the two tiles' positions
-          tile.updatePosition(positions.next);
-
-          // Update the score
-          self.score += merged.value;
-
-          // The mighty 2048 tile
-          if (merged.value === 2048) self.won = true;
-        } else {
-          self.moveTile(tile, positions.farthest);
+        /**
+         * Restart the game by recreate all DOM elements.
+         */
+        function resetGame() {
+            //Reset the props
+            boxes = [];
+            matrix = [];
+            isCheating = 0;
+            isGameOver = false;
+            //Recreate DOM elements
+            holder = $('<div>').addClass('holder2048');
+            content = $('<div>').addClass('container').appendTo(holder);
+            for (var i = 0; i < 4; i++) {
+                for (var j = 0; j < 4; j++) {
+                    //Reset matrix
+                    matrix[i * 4 + j] = {
+                        top: i * 70,
+                        left: j * 70,
+                        taken: false,
+                        combined: false,
+                        value: 0
+                    };
+                    //This is for the borders of each cell.
+                    $('<div>').addClass('mask').css({
+                        left: j * 70 + "px",
+                        top: i * 70 + "px"
+                    }).appendTo(content);
+                }
+            }
+            //Create the first box on board
+            createBox();
+            //Insert game holder and anything to whoever calls this function
+            _this.html(holder);
         }
 
-        if (!self.positionsEqual(cell, tile)) {
-          moved = true; // The tile moved from its original cell!
+        /**
+         * Just for fun.
+         * Reset the game and place a 4096 box on the board.
+         */
+        function cheat() {
+            resetGame();
+            createBox(4096);
         }
-      }
-    });
-  });
 
-  if (moved) {
-    this.addRandomTile();
-
-    if (!this.movesAvailable()) {
-      this.over = true; // Game over!
-    }
-
-    this.actuate();
-  }
-};
-
-// Get the vector representing the chosen direction
-GameManager.prototype.getVector = function (direction) {
-  // Vectors representing tile movement
-  var map = {
-    0: { x: 0,  y: -1 }, // up
-    1: { x: 1,  y: 0 },  // right
-    2: { x: 0,  y: 1 },  // down
-    3: { x: -1, y: 0 }   // left
-  };
-
-  return map[direction];
-};
-
-// Build a list of positions to traverse in the right order
-GameManager.prototype.buildTraversals = function (vector) {
-  var traversals = { x: [], y: [] };
-
-  for (var pos = 0; pos < this.size; pos++) {
-    traversals.x.push(pos);
-    traversals.y.push(pos);
-  }
-
-  // Always traverse from the farthest cell in the chosen direction
-  if (vector.x === 1) traversals.x = traversals.x.reverse();
-  if (vector.y === 1) traversals.y = traversals.y.reverse();
-
-  return traversals;
-};
-
-GameManager.prototype.findFarthestPosition = function (cell, vector) {
-  var previous;
-
-  // Progress towards the vector direction until an obstacle is found
-  do {
-    previous = cell;
-    cell     = { x: previous.x + vector.x, y: previous.y + vector.y };
-  } while (this.grid.withinBounds(cell) &&
-           this.grid.cellAvailable(cell));
-
-  return {
-    farthest: previous,
-    next: cell // Used to check if a merge is required
-  };
-};
-
-GameManager.prototype.movesAvailable = function () {
-  return this.grid.cellsAvailable() || this.tileMatchesAvailable();
-};
-
-// Check for available matches between tiles (more expensive check)
-GameManager.prototype.tileMatchesAvailable = function () {
-  var self = this;
-
-  var tile;
-
-  for (var x = 0; x < this.size; x++) {
-    for (var y = 0; y < this.size; y++) {
-      tile = this.grid.cellContent({ x: x, y: y });
-
-      if (tile) {
-        for (var direction = 0; direction < 4; direction++) {
-          var vector = self.getVector(direction);
-          var cell   = { x: x + vector.x, y: y + vector.y };
-
-          var other  = self.grid.cellContent(cell);
-          if (other) {
-          }
-
-          if (other && other.value === tile.value) {
-            return true; // These two tiles can be merged
-          }
+        /**
+         * Create a box and add to game
+         * Takes 1 or 0 param.
+         *
+         * @param value
+         */
+        function createBox(value) {
+            //Check if there are spaces for a new box or not
+            var emptyMatrix = 0;
+            for (var i = 0; i < matrix.length; i++) {
+                if (!matrix[i].taken) {
+                    emptyMatrix++;
+                }
+            }
+            if (emptyMatrix === 0) {
+                return;
+            }
+            //Chose an actual index (means not taken) randomly for the new box
+            var random = Math.floor(Math.random() * emptyMatrix + 1);
+            var chosenIndex = 0;
+            for (var j = 0; chosenIndex < matrix.length; chosenIndex++) {
+                while (matrix[chosenIndex].taken) {
+                    chosenIndex++;
+                }
+                if (++j === random) {
+                    matrix[chosenIndex].taken = true;
+                    break;
+                }
+            }
+            //Do the create job
+            value = value ? value : (Math.floor(Math.random() * 4 + 1) === 4 ? 4 : 2); //Use the value parse in or (1/4 -> 4 or  3/4 -> 2)
+            var newBox = $('<div>').addClass('box').attr({
+                position: chosenIndex,
+                value: value
+            }).css({
+                marginTop: matrix[chosenIndex].top + 2,
+                marginLeft: matrix[chosenIndex].left + 2,
+                opacity: 0
+            }).text(value).appendTo(content).animate({
+                opacity: 1
+            }, options.delay * 2);
+            //Finally push it to the boxes array
+            boxes.push(newBox);
         }
-      }
-    }
-  }
 
-  return false;
-};
-
-GameManager.prototype.positionsEqual = function (first, second) {
-  return first.x === second.x && first.y === second.y;
-};
-
-
-
-function Grid(size) {
-  this.size = size;
-
-  this.cells = [];
-
-  this.build();
-}
-
-// Build a grid of the specified size
-Grid.prototype.build = function () {
-  for (var x = 0; x < this.size; x++) {
-    var row = this.cells[x] = [];
-
-    for (var y = 0; y < this.size; y++) {
-      row.push(null);
-    }
-  }
-};
-
-// Find the first available random position
-Grid.prototype.randomAvailableCell = function () {
-  var cells = this.availableCells();
-
-  if (cells.length) {
-    return cells[Math.floor(Math.random() * cells.length)];
-  }
-};
-
-Grid.prototype.availableCells = function () {
-  var cells = [];
-
-  this.eachCell(function (x, y, tile) {
-    if (!tile) {
-      cells.push({ x: x, y: y });
-    }
-  });
-
-  return cells;
-};
-
-// Call callback for every cell
-Grid.prototype.eachCell = function (callback) {
-  for (var x = 0; x < this.size; x++) {
-    for (var y = 0; y < this.size; y++) {
-      callback(x, y, this.cells[x][y]);
-    }
-  }
-};
-
-// Check if there are any cells available
-Grid.prototype.cellsAvailable = function () {
-  return !!this.availableCells().length;
-};
-
-// Check if the specified cell is taken
-Grid.prototype.cellAvailable = function (cell) {
-  return !this.cellOccupied(cell);
-};
-
-Grid.prototype.cellOccupied = function (cell) {
-  return !!this.cellContent(cell);
-};
-
-Grid.prototype.cellContent = function (cell) {
-  if (this.withinBounds(cell)) {
-    return this.cells[cell.x][cell.y];
-  } else {
-    return null;
-  }
-};
-
-// Inserts a tile at its position
-Grid.prototype.insertTile = function (tile) {
-  this.cells[tile.x][tile.y] = tile;
-};
-
-Grid.prototype.removeTile = function (tile) {
-  this.cells[tile.x][tile.y] = null;
-};
-
-Grid.prototype.withinBounds = function (position) {
-  return position.x >= 0 && position.x < this.size &&
-         position.y >= 0 && position.y < this.size;
-};
-
-
-function HTMLActuator() {
-  this.tileContainer    = document.getElementsByClassName("tile-container")[0];
-  this.scoreContainer   = document.getElementsByClassName("score-container")[0];
-  this.messageContainer = document.getElementsByClassName("game-message")[0];
-
-  this.score = 0;
-}
-
-HTMLActuator.prototype.actuate = function (grid, metadata) {
-  var self = this;
-
-  window.requestAnimationFrame(function () {
-    self.clearContainer(self.tileContainer);
-
-    grid.cells.forEach(function (column) {
-      column.forEach(function (cell) {
-        if (cell) {
-          self.addTile(cell);
+        /**
+         * Combine 2 boxes into 1
+         * @param source
+         * @param target
+         * @param value
+         */
+        function combineBox(source, target, value) {
+            var _value = parseInt(value) * 2;
+            boxes[target].attr('value', _value).html(_value).css({
+                zIndex: 99
+            }).animate({
+                width: '+=20',
+                height: '+=20',
+                marginTop: '-=10',
+                marginLeft: '-=10'
+            }, options.delay / 2, function () {
+                $(this).animate({
+                    width: '-=20',
+                    height: '-=20',
+                    marginTop: '+=10',
+                    marginLeft: '+=10'
+                }, options.delay / 2, function () {
+                    $(this).css({
+                        zIndex: 1
+                    })
+                })
+            });
+            boxes[source].remove();
+            boxes.splice(source, 1);
         }
-      });
-    });
 
-    self.updateScore(metadata.score);
+        /**
+         * Check if game over
+         * @returns {boolean}
+         */
+        function gameOver() {
+            if (boxes.length != 16) {
+                return false;
+            }
+            var i, a, b;
+            for (i = 0; i < 16; i++) {
+                for (a = 0; a < 16; a++) {
+                    if (boxes[a].attr('position') == i)
+                        break;
+                }
+                if (i % 4 != 3) {
+                    for (b = 0; b < 16; b++) {
+                        if (boxes[b].attr('position') == i + 1)
+                            break;
+                    }
+                    if (boxes[a].attr('value') == boxes[b].attr('value'))
+                        return false;
+                }
+                if (i < 12) {
+                    for (b = 0; b < 16; b++) {
+                        if (boxes[b].attr('position') == i + 4)
+                            break;
+                    }
+                    if (boxes[a].attr('value') == boxes[b].attr('value'))
+                        return false;
+                }
+            }
+            return true;
+        }
 
-    if (metadata.over) self.message(false); // You lose
-    if (metadata.won) self.message(true); // You win!
-  });
-};
+        /**
+         * Game run
+         * @param dir
+         */
+        function gameRun(dir) {
+            if (isGameOver) {
+                return;
+            }
+            if (run(dir)) {
+                createBox();
+            }
+            if (gameOver()) {
+                isGameOver = true;
+                alert("Game Over");
+            }
+        }
 
-HTMLActuator.prototype.restart = function () {
-  this.clearMessage();
-};
+        /**
+         * Bind keyboard and screen touch events to game
+         */
+        function bind() {
+            $(window).keydown(function (event) {
+                if (!isGameOver) {
+                    if (event.which == 37) {
+                        event.preventDefault();
+                        gameRun(dir.left);
+                    } else if (event.which == 38) {
+                        event.preventDefault();
+                        gameRun(dir.up);
+                    } else if (event.which == 39) {
+                        event.preventDefault();
+                        gameRun(dir.right);
+                    } else if (event.which == 40) {
+                        event.preventDefault();
+                        gameRun(dir.down);
+                    }
+                }
+            });
+            var touchStartClientX, touchStartClientY;
+            document.addEventListener("touchstart", function (event) {
+                if (event.touches.length > 1)
+                    return;
+                touchStartClientX = event.touches[0].clientX;
+                touchStartClientY = event.touches[0].clientY;
+            });
+            document.addEventListener("touchmove", function (event) {
+                event.preventDefault();
+            });
+            document.addEventListener("touchend", function (event) {
+                if (event.touches.length > 0)
+                    return;
+                var dx = event.changedTouches[0].clientX - touchStartClientX;
+                var absDx = Math.abs(dx);
+                var dy = event.changedTouches[0].clientY - touchStartClientY;
+                var absDy = Math.abs(dy);
+                if (Math.max(absDx, absDy) > 10) {
+                    if (absDx > absDy) {
+                        if (dx > 0) {
+                            gameRun(dir.right);
+                        } else {
+                            gameRun(dir.left);
+                        }
+                    } else {
+                        if (dy > 0) {
+                            gameRun(dir.down);
+                        } else {
+                            gameRun(dir.up);
+                        }
+                    }
+                }
+            });
+        }
 
-HTMLActuator.prototype.clearContainer = function (container) {
-  while (container.firstChild) {
-    container.removeChild(container.firstChild);
-  }
-};
+        /**
+         * [WARNING] This method is ugly enough for now. Waiting for refactor.
+         *
+         * Make a single game move.
+         * Takes 1 param.
+         *
+         * @param dir
+         * @returns {boolean}
+         */
+        function run(dir) {
+            var isMoved = false; //This is to indicate that if the game actually moved after calling this function
+            var i, j, k, empty, _empty, position, value1, value2, temp; //Junks
+            //Reset the matrix attr 'combined' before moving
+            for (i = 0; i < 16; i++) {
+                matrix[i].combined = false;
+            }
+            if (dir == "left") {
+                isCheating = -1;
+                for (i = 0; i < 4; i++) {
+                    empty = i * 4;
+                    _empty = empty;
+                    for (j = 0; j < 4; j++) {
+                        position = i * 4 + j;
+                        if (!matrix[position].taken) {
+                            continue;
+                        }
+                        if (matrix[position].taken && position === empty) {
+                            empty++;
+                            if (empty - 2 >= _empty) {
+                                for (k = 0; k < boxes.length; k++) {
+                                    if (boxes[k].attr("position") == position) {
+                                        break;
+                                    }
+                                }
+                                value1 = boxes[k].attr('value');
+                                for (temp = 0; temp < boxes.length; temp++) {
+                                    if (boxes[temp].attr("position") == empty - 2) {
+                                        break;
+                                    }
+                                }
+                                value2 = boxes[temp].attr('value');
+                                if (value1 == value2 && !matrix[empty - 2].combined) {
+                                    combineBox(k, temp, value1);
+                                    matrix[empty - 1].taken = false;
+                                    matrix[empty - 2].combined = true;
+                                    empty--;
+                                    isMoved = true;
+                                }
+                            }
+                        } else {
+                            for (k = 0; k < boxes.length; k++) {
+                                if (boxes[k].attr("position") == position) {
+                                    break;
+                                }
+                            }
+                            boxes[k].animate({
+                                marginLeft: matrix[empty].left + 2,
+                                marginTop: matrix[empty].top + 2
+                            }, options.delay);
+                            boxes[k].attr('position', empty);
+                            matrix[empty].taken = true;
+                            matrix[position].taken = false;
+                            empty++;
+                            isMoved = true;
+                            if (empty - 2 >= _empty) {
+                                value1 = boxes[k].attr('value');
+                                for (temp = 0; temp < boxes.length; temp++) {
+                                    if (boxes[temp].attr("position") == empty - 2) {
+                                        break;
+                                    }
+                                }
+                                value2 = boxes[temp].attr('value');
+                                if (value1 == value2 && !matrix[empty - 2].combined) {
+                                    combineBox(k, temp, value1);
+                                    matrix[empty - 1].taken = false;
+                                    matrix[empty - 2].combined = true;
+                                    empty--;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (dir == "right") {
+                isCheating = -1;
+                for (i = 3; i > -1; i--) {
+                    empty = i * 4 + 3;
+                    _empty = empty;
+                    for (j = 3; j > -1; j--) {
+                        position = i * 4 + j;
+                        if (!matrix[position].taken) {
+                            continue;
+                        }
+                        if (matrix[position].taken && position === empty) {
+                            empty--;
+                            if (empty + 2 <= _empty) {
+                                for (k = 0; k < boxes.length; k++) {
+                                    if (boxes[k].attr("position") == position) {
+                                        break;
+                                    }
+                                }
+                                value1 = boxes[k].attr('value');
+                                for (temp = 0; temp < boxes.length; temp++) {
+                                    if (boxes[temp].attr("position") == empty + 2) {
+                                        break;
+                                    }
+                                }
+                                value2 = boxes[temp].attr('value');
+                                if (value1 == value2 && !matrix[empty + 2].combined) {
+                                    combineBox(k, temp, value1);
+                                    matrix[empty + 1].taken = false;
+                                    matrix[empty + 2].combined = true;
+                                    empty++;
+                                    isMoved = true;
+                                }
+                            }
+                        } else {
+                            for (k = 0; k < boxes.length; k++) {
+                                if (boxes[k].attr("position") == position) {
+                                    break;
+                                }
+                            }
+                            boxes[k].animate({
+                                marginLeft: matrix[empty].left + 2,
+                                marginTop: matrix[empty].top + 2
+                            }, options.delay);
+                            boxes[k].attr('position', empty);
+                            matrix[empty].taken = true;
+                            matrix[position].taken = false;
+                            empty--;
+                            isMoved = true;
+                            if (empty + 2 <= _empty) {
+                                value1 = boxes[k].attr('value');
+                                for (temp = 0; temp < boxes.length; temp++) {
+                                    if (boxes[temp].attr("position") == empty + 2) {
+                                        break;
+                                    }
+                                }
+                                value2 = boxes[temp].attr('value');
+                                if (value1 == value2 && !matrix[empty + 2].combined) {
+                                    combineBox(k, temp, value1);
+                                    matrix[empty + 1].taken = false;
+                                    matrix[empty + 2].combined = true;
+                                    empty++;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (dir == "up") {
+                isCheating = -1;
+                for (i = 0; i < 4; i++) {
+                    empty = i;
+                    _empty = empty;
+                    for (j = 0; j < 4; j++) {
+                        position = j * 4 + i;
+                        if (!matrix[position].taken) {
+                            continue;
+                        }
+                        if (matrix[position].taken && position === empty) {
+                            empty += 4;
+                            if (empty - 8 >= _empty) {
+                                for (k = 0; k < boxes.length; k++) {
+                                    if (boxes[k].attr("position") == position) {
+                                        break;
+                                    }
+                                }
+                                value1 = boxes[k].attr('value');
+                                for (temp = 0; temp < boxes.length; temp++) {
+                                    if (boxes[temp].attr("position") == empty - 8) {
+                                        break;
+                                    }
+                                }
+                                value2 = boxes[temp].attr('value');
+                                if (value1 == value2 && !matrix[empty - 8].combined) {
+                                    combineBox(k, temp, value1);
+                                    matrix[empty - 4].taken = false;
+                                    matrix[empty - 8].combined = true;
+                                    empty -= 4;
+                                    isMoved = true;
+                                }
+                            }
+                        } else {
+                            for (k = 0; k < boxes.length; k++) {
+                                if (boxes[k].attr("position") == position) {
+                                    break;
+                                }
+                            }
+                            boxes[k].animate({
+                                marginLeft: matrix[empty].left + 2,
+                                marginTop: matrix[empty].top + 2
+                            }, options.delay);
+                            boxes[k].attr('position', empty);
+                            matrix[empty].taken = true;
+                            matrix[position].taken = false;
+                            empty += 4;
+                            isMoved = true;
+                            if (empty - 8 >= _empty) {
+                                value1 = boxes[k].attr('value');
+                                for (temp = 0; temp < boxes.length; temp++) {
+                                    if (boxes[temp].attr("position") == empty - 8) {
+                                        break;
+                                    }
+                                }
+                                value2 = boxes[temp].attr('value');
+                                if (value1 == value2 && !matrix[empty - 8].combined) {
+                                    combineBox(k, temp, value1);
+                                    matrix[empty - 4].taken = false;
+                                    matrix[empty - 8].combined = true;
+                                    empty -= 4;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (dir == "down") {
+                if (isCheating != -1) {
+                    isCheating++;
+                    if (isCheating == 10) {
+                        cheat();
+                        return true;
+                    }
+                }
+                for (i = 0; i < 4; i++) {
+                    empty = i + 12;
+                    _empty = empty;
+                    for (j = 3; j > -1; j--) {
+                        position = j * 4 + i;
+                        if (!matrix[position].taken) {
+                            continue;
+                        }
+                        if (matrix[position].taken && position === empty) {
+                            empty -= 4;
+                            if (empty + 8 <= _empty) {
+                                for (k = 0; k < boxes.length; k++) {
+                                    if (boxes[k].attr("position") == position) {
+                                        break;
+                                    }
+                                }
+                                value1 = boxes[k].attr('value');
+                                for (temp = 0; temp < boxes.length; temp++) {
+                                    if (boxes[temp].attr("position") == empty + 8) {
+                                        break;
+                                    }
+                                }
+                                value2 = boxes[temp].attr('value');
+                                if (value1 == value2 && !matrix[empty + 8].combined) {
+                                    combineBox(k, temp, value1);
+                                    matrix[empty + 4].taken = false;
+                                    matrix[empty + 8].combined = true;
+                                    empty += 4;
+                                    isMoved = true;
+                                }
+                            }
+                        } else {
+                            for (k = 0; k < boxes.length; k++) {
+                                if (boxes[k].attr("position") == position) {
+                                    break;
+                                }
+                            }
+                            boxes[k].animate({
+                                marginLeft: matrix[empty].left + 2,
+                                marginTop: matrix[empty].top + 2
+                            }, options.delay);
+                            boxes[k].attr('position', empty);
+                            matrix[empty].taken = true;
+                            matrix[position].taken = false;
+                            empty -= 4;
+                            isMoved = true;
+                            if (empty + 8 <= _empty) {
+                                value1 = boxes[k].attr('value');
+                                for (temp = 0; temp < boxes.length; temp++) {
+                                    if (boxes[temp].attr("position") == empty + 8) {
+                                        break;
+                                    }
+                                }
+                                value2 = boxes[temp].attr('value');
+                                if (value1 == value2 && !matrix[empty + 8].combined) {
+                                    combineBox(k, temp, value1);
+                                    matrix[empty + 4].taken = false;
+                                    matrix[empty + 8].combined = true;
+                                    empty += 4;
+                                }
+                            }
+                        }
+                    }
+                }
 
-HTMLActuator.prototype.addTile = function (tile) {
-  var self = this;
-
-  var element   = document.createElement("div");
-  var position  = tile.previousPosition || { x: tile.x, y: tile.y };
-  positionClass = this.positionClass(position);
-
-  // We can't use classlist because it somehow glitches when replacing classes
-  var classes = ["tile", "tile-" + tile.value, positionClass];
-  this.applyClasses(element, classes);
-
-  element.textContent = tile.value;
-
-  if (tile.previousPosition) {
-    // Make sure that the tile gets rendered in the previous position first
-    window.requestAnimationFrame(function () {
-      classes[2] = self.positionClass({ x: tile.x, y: tile.y });
-      self.applyClasses(element, classes); // Update the position
-    });
-  } else if (tile.mergedFrom) {
-    classes.push("tile-merged");
-    this.applyClasses(element, classes);
-
-    // Render the tiles that merged
-    tile.mergedFrom.forEach(function (merged) {
-      self.addTile(merged);
-    });
-  } else {
-    classes.push("tile-new");
-    this.applyClasses(element, classes);
-  }
-
-  // Put the tile on the board
-  this.tileContainer.appendChild(element);
-};
-
-HTMLActuator.prototype.applyClasses = function (element, classes) {
-  element.setAttribute("class", classes.join(" "));
-};
-
-HTMLActuator.prototype.normalizePosition = function (position) {
-  return { x: position.x + 1, y: position.y + 1 };
-};
-
-HTMLActuator.prototype.positionClass = function (position) {
-  position = this.normalizePosition(position);
-  return "tile-position-" + position.x + "-" + position.y;
-};
-
-HTMLActuator.prototype.updateScore = function (score) {
-  this.clearContainer(this.scoreContainer);
-
-  var difference = score - this.score;
-  this.score = score;
-
-  this.scoreContainer.textContent = this.score;
-
-  if (difference > 0) {
-    var addition = document.createElement("div");
-    addition.classList.add("score-addition");
-    addition.textContent = "+" + difference;
-
-    this.scoreContainer.appendChild(addition);
-  }
-};
-
-HTMLActuator.prototype.message = function (won) {
-  var type    = won ? "game-won" : "game-over";
-  var message = won ? "You win!" : "Game over!"
-
-  // if (ga) ga("send", "event", "game", "end", type, this.score);
-
-  this.messageContainer.classList.add(type);
-  this.messageContainer.getElementsByTagName("p")[0].textContent = message;
-};
-
-HTMLActuator.prototype.clearMessage = function () {
-  this.messageContainer.classList.remove("game-won", "game-over");
-};
-
-
-
-function KeyboardInputManager() {
-  this.events = {};
-
-  this.listen();
-}
-
-KeyboardInputManager.prototype.on = function (event, callback) {
-  if (!this.events[event]) {
-    this.events[event] = [];
-  }
-  this.events[event].push(callback);
-};
-
-KeyboardInputManager.prototype.emit = function (event, data) {
-  var callbacks = this.events[event];
-  if (callbacks) {
-    callbacks.forEach(function (callback) {
-      callback(data);
-    });
-  }
-};
-
-KeyboardInputManager.prototype.listen = function () {
-  var self = this;
-
-  var map = {
-    38: 0, // Up
-    39: 1, // Right
-    40: 2, // Down
-    37: 3, // Left
-    75: 0, // vim keybindings
-    76: 1,
-    74: 2,
-    72: 3
-  };
-
-  document.addEventListener("keydown", function (event) {
-    var modifiers = event.altKey || event.ctrlKey || event.metaKey ||
-                    event.shiftKey;
-    var mapped    = map[event.which];
-
-    if (!modifiers) {
-      if (mapped !== undefined) {
-        event.preventDefault();
-        self.emit("move", mapped);
-      }
-
-      if (event.which === 32) self.restart.bind(self)(event);
+            }
+            return isMoved;
+        }
     }
-  });
-
-  var retry = document.getElementsByClassName("retry-button")[0];
-  retry.addEventListener("click", this.restart.bind(this));
-
-  // Listen to swipe events
-  var gestures = [Hammer.DIRECTION_UP, Hammer.DIRECTION_RIGHT,
-                  Hammer.DIRECTION_DOWN, Hammer.DIRECTION_LEFT];
-
-  var gameContainer = document.getElementsByClassName("game-container")[0];
-  var handler       = Hammer(gameContainer, {
-    drag_block_horizontal: true,
-    drag_block_vertical: true
-  });
-  
-  handler.on("swipe", function (event) {
-    event.gesture.preventDefault();
-    mapped = gestures.indexOf(event.gesture.direction);
-
-    if (mapped !== -1) self.emit("move", mapped);
-  });
-};
-
-KeyboardInputManager.prototype.restart = function (event) {
-  event.preventDefault();
-  this.emit("restart");
-};
-
-
-
-
-
-function Tile(position, value) {
-  this.x                = position.x;
-  this.y                = position.y;
-  this.value            = value || 2;
-
-  this.previousPosition = null;
-  this.mergedFrom       = null; // Tracks tiles that merged together
-}
-
-Tile.prototype.savePosition = function () {
-  this.previousPosition = { x: this.x, y: this.y };
-};
-
-Tile.prototype.updatePosition = function (position) {
-  this.x = position.x;
-  this.y = position.y;
-};
-
+})(jQuery);
