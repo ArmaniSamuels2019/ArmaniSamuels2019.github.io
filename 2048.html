@@ -1,65 +1,25 @@
-<!doctype html>
+<!DOCTYPE html/>
 <html>
+
 <head>
-  <link rel="stylesheet" type="text/css" href="2048.css" media="screen"/>
-  <script src="2048.js"></script>
-  <script src="https://hammerjs.github.io/dist/hammer.min.js"></script>
+    <title>2048</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+    <link rel="stylesheet" href="2048.css" />
 </head>
+
 <body>
-<div class="container">
-  <div class="heading">
-    <h1 class="title">2048</h1>
-    <div class="score-container">0</div>
-  </div>
-  <p class="game-intro">Join the numbers and get to the <strong>2048 tile!</strong></p>
-
-  <div class="game-container">
-    <div class="game-message">
-      <p></p>
-      <div class="lower">
-        <a class="retry-button">Try again</a>
-      </div>
+    <div class="container text-center" id="2048">
     </div>
-
-    <div class="grid-container">
-      <div class="grid-row">
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-      </div>
-      <div class="grid-row">
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-      </div>
-      <div class="grid-row">
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-      </div>
-      <div class="grid-row">
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-        <div class="grid-cell"></div>
-      </div>
-    </div>
-
-    <div class="tile-container">
-
-    </div>
-  </div>
-
-  <p class="game-explanation">
-    <strong class="important">How to play:</strong> Use your <strong>arrow keys</strong> to move the tiles. When two tiles with the same number touch, they <strong>merge into one!</strong>
-  </p>
-  <hr>
-  <p>
-  Created by <a href="http://gabrielecirulli.com" target="_blank">Gabriele Cirulli.</a> Based on <a href="https://itunes.apple.com/us/app/1024!/id823499224" target="_blank">1024 by Veewo Studio</a> and conceptually similar to <a href="http://asherv.com/threes/" target="_blank">Threes by Asher Vollmer.</a>
-  </p>
-</div>
+     <script
+  src="https://code.jquery.com/jquery-3.3.1.min.js"
+  integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
+            crossorigin="anonymous"></script>
+    <script src="2048.js"></script>
+    <script>
+        $(document).ready(function () {
+            $("#2048").init2048();
+        });
+    </script>
 </body>
+
 </html>
