@@ -34,6 +34,7 @@
         var val = turn == 1 ? 'X' : 'O'
         our_box.text(val);
         turn = !turn;
+        $("#turn").text(turn == 1 ? 'X' : 'O') + " 's Turn");
       }
       });
         
@@ -55,6 +56,7 @@
       <img src="https://static1.squarespace.com/static/58ecfb696a49630e8a7ee3ca/5955530e59cc683797e3317c/5a6f3ad3419202597c791fc3/1522863094218/Good_Vibes-CDR.jpg?format=500w" width=40%>
       <button id="button3">Ta Da!</button>
         <p id='fourth'>GOOD VIBES ALL AROUND.</p>
+      <h3 id= "turn">X's Turn</h3>
    <div cass="row">
      <button class="col-md-3 box" id="box1"></button>
      <button class="col-md-3 box" id="box2"></button>
