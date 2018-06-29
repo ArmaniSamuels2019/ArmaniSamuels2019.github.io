@@ -25,7 +25,8 @@
       var turn = x;
       
       $(".box").click(function(){
-        alert(this.id);
+        var our_box = $("#"+this.id);
+        our_box.text(turn);
       });
         
         
